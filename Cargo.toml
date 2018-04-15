@@ -1,0 +1,6 @@
+[package]
+name = "ratelimiter"
+version = "0.1.0"
+authors = ["John Edmonds <john.a.edmonds@gmail.com>"]
+
+[dependencies]
