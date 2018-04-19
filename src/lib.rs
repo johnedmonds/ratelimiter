@@ -15,6 +15,7 @@ use futures::prelude::Future;
 const MILLIS_PER_SEC: u64 = 1_000;
 const NANOS_PER_MILLI: u32 = 1_000_000;
 
+/// Trait that exists because there's no way to get the number of milliseconds from a Duration.
 trait HasMillis {
     fn as_millis(&self) -> u64;
 }
@@ -24,16 +25,21 @@ impl HasMillis for Duration {
         return self.as_secs() * MILLIS_PER_SEC + ((self.subsec_nanos() / NANOS_PER_MILLI) as u64);
     }
 }
+
+/// Bucket of tokens and things waiting for those tokens.
 struct TokenBucket {
     available_tokens: u32,
     waiting_wakers: Vec<Waker>
 }
 
+/// Limits the rate at which things can happen.
 pub struct RateLimiter {
     token_bucket: Arc<Mutex<TokenBucket>>,
+    /// True if the token-adding thread should keep adding tokens.
     is_still_adding_tokens: Arc<Mutex<bool>>
 }
 
+/// Future for a single token
 pub struct TokenFuture {
     token_bucket: Arc<Mutex<TokenBucket>>,
     token_acquired: bool
