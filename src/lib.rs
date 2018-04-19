@@ -94,6 +94,7 @@ impl RateLimiter {
                     });
                     next_time_to_add_tokens = next_time_to_add_tokens + time_between_adding_tokens * cycles_passed as u32;
                 }
+                std::thread::sleep(time_between_adding_tokens);
             }
         });
         return rate_limiter;
