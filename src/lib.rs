@@ -123,7 +123,7 @@ mod tests {
     use futures::Async::Ready;
     use futures::task::Context;
     use futures::task::LocalMap;
-    use futures::executor::LocalPool;
+    use futures::executor::{LocalPool, ThreadPool};
     use futures::task::Wake;
 
     struct RecordingWake {
@@ -168,5 +168,12 @@ mod tests {
         std::thread::sleep(sleep_duration * 2);
         assert_eq!(Ok(Ready(())), token.poll(&mut context));
         assert_eq!(true, *recording_wake.woken.lock().unwrap());
+    }
+
+    #[test]
+    fn executor_test() {
+        let mut pool = ThreadPool::new().unwrap();
+        let mut rate_limiter = RateLimiter::new(0, 1, Duration::from_millis(100));
+        assert_eq!(Ok(()), pool.run(rate_limiter.acquire_token()));
     }
 }
