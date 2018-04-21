@@ -116,8 +116,57 @@ impl RateLimiter {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::time::Duration;
+    use std::sync::Mutex;
+    use futures::Async::Pending;
+    use futures::Async::Ready;
+    use futures::task::Context;
+    use futures::task::LocalMap;
+    use futures::executor::LocalPool;
+    use futures::task::Wake;
+
+    struct RecordingWake {
+        woken: Mutex<bool>
+    }
+
+    impl Wake for RecordingWake {
+        fn wake(arc_self: &Arc<Self>) {
+            *arc_self.woken.lock().unwrap() = true;
+        }
+    }
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn acquire_token() {
+        let mut local_map = LocalMap::new();
+        let local_pool = LocalPool::new();
+        let mut executor = local_pool.executor();
+        let recording_wake = RecordingWake {
+            woken: Mutex::new(false)
+        };
+        let waker = Waker::from(Arc::new(recording_wake));
+        let mut context = Context::new(&mut local_map, &waker, &mut executor);
+        let mut rate_limiter = RateLimiter::new(1, 1, Duration::from_secs(1));
+        assert_eq!(Ok(Ready(())), rate_limiter.acquire_token().poll(&mut context));
+    }
+
+    #[test]
+    fn wait_for_token() {
+        let mut local_map = LocalMap::new();
+        let local_pool = LocalPool::new();
+        let mut executor = local_pool.executor();
+        let recording_wake = Arc::new(RecordingWake {
+            woken: Mutex::new(false)
+        });
+        let waker = Waker::from(recording_wake.clone());
+        let mut context = Context::new(&mut local_map, &waker, &mut executor);
+        let sleep_duration = Duration::from_millis(100);
+        let mut rate_limiter = RateLimiter::new(0, 1, sleep_duration);
+        let mut token = rate_limiter.acquire_token();
+        assert_eq!(Ok(Pending), token.poll(&mut context));
+        assert_eq!(false, *recording_wake.woken.lock().unwrap());
+        std::thread::sleep(sleep_duration * 2);
+        assert_eq!(Ok(Ready(())), token.poll(&mut context));
+        assert_eq!(true, *recording_wake.woken.lock().unwrap());
     }
 }
