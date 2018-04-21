@@ -1,5 +1,6 @@
 extern crate futures;
 
+use std::thread::Thread;
 use std::cmp::min;
 use std::time::Duration;
 use std::time::Instant;
@@ -36,7 +37,8 @@ struct TokenBucket {
 pub struct RateLimiter {
     token_bucket: Arc<Mutex<TokenBucket>>,
     /// True if the token-adding thread should keep adding tokens.
-    is_still_adding_tokens: Arc<Mutex<bool>>
+    is_still_adding_tokens: Arc<Mutex<bool>>,
+    token_adding_thread: Thread
 }
 
 /// Future for a single token
@@ -48,6 +50,7 @@ pub struct TokenFuture {
 impl Drop for RateLimiter {
     fn drop(&mut self) {
         *self.is_still_adding_tokens.lock().unwrap() = false;
+        self.token_adding_thread.unpark();
     }
 }
 
@@ -76,13 +79,11 @@ impl RateLimiter {
             waiting_wakers: Vec::new()
         }));
         let is_still_adding_tokens = Arc::new(Mutex::new(true));
-        let rate_limiter = RateLimiter {
-            token_bucket: shared_token_bucket.clone(),
-            is_still_adding_tokens: is_still_adding_tokens.clone()
-        };
+        let rate_limiter_token_bucket = shared_token_bucket.clone();
+        let rate_limiter_is_still_adding_tokens = is_still_adding_tokens.clone();
         let mut next_time_to_add_tokens = Instant::now() + time_between_adding_tokens;
-        std::thread::spawn(move || {
-            while *is_still_adding_tokens.lock().unwrap() {
+        let token_adding_thread = std::thread::spawn(move || {
+            while *is_still_adding_tokens.lock().unwrap() || shared_token_bucket.lock().unwrap().waiting_wakers.len() > 0 {
                 let now = Instant::now();
                 if next_time_to_add_tokens > now {
                     let cycles_passed = 1 + (next_time_to_add_tokens.duration_since(now).as_millis() / time_between_adding_tokens.as_millis());
@@ -94,9 +95,14 @@ impl RateLimiter {
                     });
                     next_time_to_add_tokens = next_time_to_add_tokens + time_between_adding_tokens * cycles_passed as u32;
                 }
-                std::thread::sleep(time_between_adding_tokens);
+                std::thread::park_timeout(time_between_adding_tokens);
             }
-        });
+        }).thread().clone();
+        let rate_limiter = RateLimiter {
+            token_bucket: rate_limiter_token_bucket,
+            is_still_adding_tokens: rate_limiter_is_still_adding_tokens,
+            token_adding_thread: token_adding_thread
+        };
         return rate_limiter;
     }
 
