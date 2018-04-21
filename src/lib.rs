@@ -34,6 +34,27 @@ struct TokenBucket {
 }
 
 /// Limits the rate at which things can happen.
+/// 
+/// Tokens can be acquired as futures. A thread runs in the background adding tokens at a configurable rate. Once the RateLimiter is droped and there are no more futures to execute the token-adding thread terminates.
+/// 
+/// # Example Acquiring a Token
+/// 
+/// ```
+/// extern crate ratelimiter;
+/// extern crate futures;
+/// use ratelimiter::{RateLimiter, TokenFuture};
+/// use futures::executor::ThreadPool;
+/// use std::time::Duration;
+/// 
+/// use futures::FutureExt;
+/// let mut rate_limiter = RateLimiter::new(1, 1, Duration::from_secs(1));
+/// let token: TokenFuture = rate_limiter.acquire_token();
+/// let and_then = token.and_then(|_| {
+///     println!("Token acquired!");
+///     return Ok(());
+/// });
+/// ThreadPool::new().unwrap().run(and_then);
+/// ```
 pub struct RateLimiter {
     token_bucket: Arc<Mutex<TokenBucket>>,
     /// True if the token-adding thread should keep adding tokens.
@@ -42,6 +63,8 @@ pub struct RateLimiter {
 }
 
 /// Future for a single token
+/// 
+/// Implementation note: You should not attempt to poll the future multiple times. Simply pass it to an executor to take care of it for you (this is because we record the waker used to immediately notify the futures that tokens are ready and polling multiple times registers multiple "wakers"). Ideally this should be fixed in another version.
 pub struct TokenFuture {
     token_bucket: Arc<Mutex<TokenBucket>>,
     token_acquired: bool
@@ -49,7 +72,9 @@ pub struct TokenFuture {
 
 impl Drop for RateLimiter {
     fn drop(&mut self) {
+        // Allow the thread to exit.
         *self.is_still_adding_tokens.lock().unwrap() = false;
+        // Wake up the thread immediately. It's possible there are more futures to complete so the thread won't stop but just in case this will allow the thread to terminate early.
         self.token_adding_thread.unpark();
     }
 }
