@@ -1,3 +1,24 @@
+//! Rate limiter for rust. Acquire tokens as futures which are resolved when the token is ready.
+//!
+//!  # Example Acquiring a Token
+//!
+//! ```
+//! extern crate ratelimiter;
+//! extern crate futures;
+//! use ratelimiter::{RateLimiter, TokenFuture};
+//! use futures::executor::ThreadPool;
+//! use std::time::Duration;
+//!
+//! use futures::FutureExt;
+//! let mut rate_limiter = RateLimiter::new(1, 1, Duration::from_secs(1));
+//! let token: TokenFuture = rate_limiter.acquire_token();
+//! let and_then = token.and_then(|_| {
+//!     println!("Token acquired!");
+//!     return Ok(());
+//! });
+//! ThreadPool::new().unwrap().run(and_then);
+//! ```
+
 extern crate futures;
 
 use std::thread::Thread;
@@ -36,25 +57,6 @@ struct TokenBucket {
 /// Limits the rate at which things can happen.
 /// 
 /// Tokens can be acquired as futures. A thread runs in the background adding tokens at a configurable rate. Once the RateLimiter is droped and there are no more futures to execute the token-adding thread terminates.
-/// 
-/// # Example Acquiring a Token
-/// 
-/// ```
-/// extern crate ratelimiter;
-/// extern crate futures;
-/// use ratelimiter::{RateLimiter, TokenFuture};
-/// use futures::executor::ThreadPool;
-/// use std::time::Duration;
-/// 
-/// use futures::FutureExt;
-/// let mut rate_limiter = RateLimiter::new(1, 1, Duration::from_secs(1));
-/// let token: TokenFuture = rate_limiter.acquire_token();
-/// let and_then = token.and_then(|_| {
-///     println!("Token acquired!");
-///     return Ok(());
-/// });
-/// ThreadPool::new().unwrap().run(and_then);
-/// ```
 pub struct RateLimiter {
     token_bucket: Arc<Mutex<TokenBucket>>,
     /// True if the token-adding thread should keep adding tokens.
