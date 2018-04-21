@@ -2,6 +2,8 @@
 name = "ratelimiter"
 version = "0.1.0"
 authors = ["John Edmonds <john.a.edmonds@gmail.com>"]
+description = "Rate limiter for Rust."
+repository = "https://github.com/johnedmonds/ratelimiter"
 
 [dependencies]
 futures = "0.2.0"
